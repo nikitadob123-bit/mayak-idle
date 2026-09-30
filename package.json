@@ -7,7 +7,8 @@
     "test": "node test/run.js",
     "sim": "node tools/sim.js",
     "icons": "node tools/make-icons.js",
-    "e2e": "node tools/e2e.js"
+    "e2e": "node tools/e2e.js",
+    "e2e:migrate": "node tools/e2e-migrate.js"
   },
   "devDependencies": { "playwright-core": "^1.50.0" }
 }

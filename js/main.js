@@ -62,7 +62,8 @@
     var sr = $('scene').getBoundingClientRect(), sz = Sc.size();
     Sc.burst(parseFloat($('starBtn').style.left) || sz.w / 2, parseFloat($('starBtn').style.top) || sz.h / 2, 30, '#ffd76a', 180, 80);
     $('starBtn').hidden = true;
-    var msg = res.gain ? 'Найдено <b>+' + fmt(res.gain) + '</b> света!' : '<b>' + res.name + '</b> на ' + Math.round(res.dur) + ' с!';
+    var msg = res.treasure ? 'В бутылке было сокровище: ' + res.treasure.emoji + ' <b>' + res.treasure.name + '</b>!' : res.gain ? 'Найдено <b>+' + fmt(res.gain) + '</b> света!' : '<b>' + res.name + '</b> на ' + Math.round(res.dur) + ' с!';
+    if (res.treasure) { A.zone(); Sc.pulse(1.2); }
     UI.toast('⭐ ' + msg);
     if (res.gain) UI.floatText(sz.w / 2, sz.h / 2, '+' + fmt(res.gain), true);
     checkAchNow();
@@ -86,6 +87,25 @@
         var got = E.ascend(s); A.ascend(); document.body.classList.add('fx-flash'); setTimeout(function () { document.body.classList.remove('fx-flash'); }, 950);
         UI.toast('🌠 Вознесение! <b>+' + fmt(got) + ' ⭐</b>'); applyZoneScene(); checkAchNow(); persist(); UI.refresh(true);
       } }] });
+  };
+
+  G.askEra = function () {
+    var s = G.s, g = E.eonGain(s);
+    if (g < 1) { A.error(); return; }
+    var c = E.calc(s);
+    UI.modal({ emoji: '♾️', title: 'Новая Эпоха', body: '<p>Будет сброшено <b>всё</b>: свет, огни, улучшения, 🦪 жемчужины, ⭐ звёзды' + (c.keepPerks ? ' (созвездия: сохранятся первые ' + Math.min(c.keepPerks, D.PERKS.length) + ')' : ' и созвездия') + '.</p><div class="big">+' + fmt(g) + ' 🌀</div><p>Эоны, хроники, достижения и коллекция остаются навсегда.</p>',
+      buttons: [{ text: 'Отмена', cls: 'ghost' }, { text: 'Начать Эпоху', cls: 'purple', onClick: function () {
+        var got = E.era(s); A.ascend(); document.body.classList.add('fx-flash'); setTimeout(function () { document.body.classList.remove('fx-flash'); }, 950);
+        UI.toast('♾️ Новая Эпоха! <b>+' + fmt(got) + ' 🌀</b>'); applyZoneScene(); checkAchNow(); persist(); UI.refresh(true);
+      } }] });
+  };
+  G.buyEshop = function (id) { if (E.buyEshop(G.s, id)) { A.upgrade(); checkAchNow(); UI.refresh(true); } else A.error(); };
+  G.claimQuest = function (i) {
+    var r = E.claimQuest(G.s, i);
+    if (!r) { A.error(); return; }
+    A.achieve(); Sc.pulse(1);
+    UI.toast('📋 Поручение выполнено: <b>+' + fmt(r.light) + '</b>' + (r.pearls ? ' и +' + r.pearls + ' 🦪' : '') + (r.treasure ? '<br>💎 Из сундука: ' + r.treasure.emoji + ' <b>' + r.treasure.name + '</b>!' : ''));
+    checkAchNow(); UI.refresh(true);
   };
 
   G.claimDaily = function () {
@@ -146,7 +166,7 @@
     updToast = UI.toast('🔄 Доступна новая версия игры<button class="btn gold" id="updGo">Обновить сейчас</button>', { persist: true });
     updToast.querySelector('#updGo').addEventListener('click', function () {
       persist();
-      var w = reg.waiting; if (w) w.postMessage({ type: 'SKIP_WAITING' }); else location.reload();
+      var w = reg.waiting; if (w) { w.postMessage({ type: 'SKIP_WAITING' }); setTimeout(function () { location.reload(); }, 4000); } else location.reload();
     });
   }
   G.checkUpdate = function (manual) {
@@ -157,7 +177,10 @@
     if (!('serviceWorker' in navigator) || !/^https?:$/.test(location.protocol)) return;
     var reloading = false, hadController = !!navigator.serviceWorker.controller;
     // Перезагружаемся только при обновлении версии (когда уже был контроллер), а не при первой установке SW.
-    navigator.serviceWorker.addEventListener('controllerchange', function () { if (reloading || !hadController) return; reloading = true; persist(); location.reload(); });
+    navigator.serviceWorker.addEventListener('controllerchange', function () {
+      if (!hadController) { hadController = true; return; } // первая установка SW: страницу не перезагружаем
+      if (reloading) return; reloading = true; persist(); location.reload();
+    });
     navigator.serviceWorker.register('sw.js').then(function (reg) {
       swReg = reg; root.__swReg = reg;
       if (reg.waiting && navigator.serviceWorker.controller) showUpdate(reg);
@@ -179,6 +202,7 @@
     if (dt > 90) dt = 90; // сон между кадрами без hidden: считаем как обычное время
     var notes = E.tick(G.s, dt);
     notes.forEach(function (n) {
+      if (n.t === 'autopres') { UI.toast('🤖 Автоотлив: <b>+' + fmt(n.g) + ' 🦪</b>'); applyZoneScene(); UI.refresh(true); }
       if (n.t === 'zone') {
         var z = D.ZONES[n.z]; A.zone(); applyZoneScene();
         UI.modal({ emoji: z.emoji, title: 'Новая зона: ' + z.name, body: '<p>' + z.desc + '</p><p>Выработка ×' + z.mult + ', открыты новые огни!</p>' });
@@ -218,6 +242,7 @@
     if (s.stats.playTime === 0 && s.taps === 0) setTimeout(function () { UI.toast('👆 Коснись маяка, чтобы зажечь свет!'); }, 600);
     var di = E.dailyInfo(s, now);
     if (di.canClaim) setTimeout(function () { UI.toast('📅 Ежедневная награда ждёт — вкладка «Награды»'); }, 1200);
+    E.ensureQuests(s);
     E.checkAch(s, now); lastT = now; lastSave = now;
     UI.refresh(true);
     setInterval(loop, 100);

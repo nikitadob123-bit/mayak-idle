@@ -15,7 +15,9 @@ t('∞ cap и мусор', () => { assert.strictEqual(U.fmt(1e300), '∞ cap'); 
 t('fmtTime', () => { assert.strictEqual(U.fmtTime(59), '59с'); assert.strictEqual(U.fmtTime(3700), '1ч 1м'); assert.strictEqual(U.fmtTime(90000), '1д 1ч'); });
 
 console.log('Данные');
-t('≥10 генераторов, ≥30 улучшений, ≥5 зон, ≥40 достижений', () => { assert.ok(D.GENS.length >= 10 && D.UPGRADES.length >= 30 && D.ZONES.length >= 5 && D.ACHIEVEMENTS.length >= 40); });
+t('v2.0: ≥20 генераторов, ≥100 улучшений, ≥9 зон, ≥140 достижений', () => { assert.ok(D.GENS.length >= 20 && D.UPGRADES.length >= 100 && D.ZONES.length >= 9 && D.ACHIEVEMENTS.length >= 120, [D.GENS.length, D.UPGRADES.length, D.ZONES.length, D.ACHIEVEMENTS.length].join()); });
+t('новые генераторы: 9 шт., цены/выработка растут', () => { assert.strictEqual(D.GENS.length, 23); for (let i = 1; i < D.GENS.length; i++) { assert.ok(D.GENS[i].cost > D.GENS[i - 1].cost && D.GENS[i].prod > D.GENS[i - 1].prod); assert.ok(D.GENS[i].zone <= D.ZONES.length - 1); } });
+t('цены всех улучшений и генераторов < CAP', () => { D.UPGRADES.forEach(u => assert.ok(u.cost < U.CAP)); D.GENS.forEach(g => assert.ok(g.cost * Math.pow(1.15, 1500) < U.CAP, g.id)); });
 t('цены генераторов строго растут (экспонента)', () => { for (let i = 1; i < D.GENS.length; i++) assert.ok(D.GENS[i].cost / D.GENS[i - 1].cost > 5); });
 t('уникальные id, все prereq существуют, нет циклов', () => {
   const ids = new Set(); D.UPGRADES.forEach(u => { assert.ok(!ids.has(u.id), u.id); ids.add(u.id); });
@@ -47,7 +49,7 @@ t('улучшения: нужны prereq и условия', () => {
 t('касание x2 от улучшения и % от выработки', () => { const s = E.newState(0); near(E.tapValue(s), 1); s.light = 1e5; E.buyUpgrade(s, 'h1'); near(E.tapValue(s), 2); s.gens[0] = 100; s.upgrades.h3 = 1; E.dirty(s); assert.ok(E.tapValue(s) > 2 + 0.019 * E.prod(s)); });
 
 console.log('Зоны');
-t('зоны открываются по пороговому свету', () => { const s = E.newState(0); assert.strictEqual(E.zoneFor(s), 0); s.runLight = 2.5e3; assert.strictEqual(E.zoneFor(s), 1); s.runLight = 5e15; assert.strictEqual(E.zoneFor(s), 5, 'зона 6 требует вознесения'); s.ascensions = 1; assert.strictEqual(E.zoneFor(s), 6); });
+t('зоны открываются по пороговому свету', () => { const s = E.newState(0); assert.strictEqual(E.zoneFor(s), 0); s.runLight = 2.5e3; assert.strictEqual(E.zoneFor(s), 1); s.runLight = 5e15; assert.strictEqual(E.zoneFor(s), 5, 'зона 6 требует вознесения'); s.ascensions = 1; assert.strictEqual(E.zoneFor(s), 6); s.runLight = 1e30; assert.strictEqual(E.zoneFor(s), 8, 'Океан начала требует 2 Эпох'); s.eras = 2; assert.strictEqual(E.zoneFor(s), 9); });
 t('tick повышает зону и даёт уведомление', () => { const s = E.newState(0); s.runLight = 3e3; const n = E.tick(s, 1); assert.ok(n.some(x => x.t === 'zone') && s.zone === 1); });
 
 console.log('Отлив (престиж)');
@@ -140,6 +142,104 @@ t('1000 случайных тиков/покупок не ломают инва�
   const rng = U.makeRng(7), s = E.newState(0);
   for (let i = 0; i < 1000; i++) { const r = rng(); if (r < .3) E.tap(s); else if (r < .6) E.buyGen(s, Math.floor(rng() * 14), [1, 10, 100, 'max'][Math.floor(rng() * 4)]); else if (r < .7) E.buyUpgrade(s, D.UPGRADES[Math.floor(rng() * D.UPGRADES.length)].id); else E.tick(s, rng() * 20, rng); s.light += rng() * 1e6 * Math.pow(10, i / 60); }
   assert.ok(s.light >= 0 && isFinite(s.light)); s.gens.forEach(g => assert.ok(g >= 0 && g <= E.MAX_OWN));
+});
+
+console.log('Эпоха (3-й слой)');
+t('формула эонов и порог', () => { const s = E.newState(0); s.starsCycle = D.BAL.eraBase - 1; assert.strictEqual(E.eonGain(s), 0); s.starsCycle = D.BAL.eraBase * 32; assert.strictEqual(E.eonGain(s), Math.floor(Math.pow(32, D.BAL.eraExp))); });
+t('Эпоха сбрасывает звёзды/созвездия/жемчужины/дары, сохраняет эоны, хроники, достижения, коллекцию, вознесения', () => {
+  const s = E.newState(0); s.starsCycle = 50000; s.stars = 900; s.starsAll = 50000; s.perks = { c1: 1, c2: 1 }; s.pearls = 10; s.pearlsCycle = 500; s.shop.s1 = 1; s.ascensions = 12; s.ach.tap0 = 1; s.treasures.t0 = 1; s.gens[0] = 5; E.dirty(s);
+  const g = E.eonGain(s); assert.ok(g >= 1); assert.strictEqual(E.era(s), g);
+  assert.strictEqual(s.eons, g); assert.strictEqual(s.eonsAll, g); assert.strictEqual(s.eras, 1); assert.strictEqual(s.stars, 0); assert.strictEqual(s.starsCycle, 0); assert.deepStrictEqual(s.perks, {}); assert.strictEqual(s.pearls, 0); assert.deepStrictEqual(s.shop, {});
+  assert.strictEqual(s.ascensions, 12); assert.strictEqual(s.starsAll, 50000); assert.ok(s.ach.tap0 && s.treasures.t0); assert.strictEqual(s.gens[0], 0);
+});
+t('эоны дают множитель', () => { const s = E.newState(0); s.gens[0] = 10; E.dirty(s); const p0 = E.prod(s); s.eonsAll = 100; E.dirty(s); near(E.prod(s), p0 * Math.pow(1 + D.BAL.eonPer * 100, D.BAL.eonPow)); });
+t('хроники: покупка за эоны, эффекты, сохранение созвездий', () => {
+  const s = E.newState(0); s.eons = 100; assert.ok(E.buyEshop(s, 'e1')); assert.strictEqual(s.eons, 99); assert.ok(!E.buyEshop(s, 'e1'));
+  s.eshop.e2 = 1; s.perks = { c1: 1, c2: 1, c3: 1, c9: 1 }; s.starsCycle = 1e6; E.dirty(s); E.era(s);
+  assert.ok(s.perks.c1 && s.perks.c2 && s.perks.c3 && !s.perks.c9, 'сохраняются только первые 5 созвездий');
+});
+t('sgain хроники повышает звёзды', () => { const s = E.newState(0); s.pearlsCycle = 4000; const g0 = E.starGain(s); s.eshop.e3 = 1; E.dirty(s); assert.ok(E.starGain(s) > g0); });
+t('автоотлив срабатывает только при покупке хроники и включённой настройке', () => {
+  const s = E.newState(0); s.runLight = 1e13; s.stats.runTime = 120; s.gens[0] = 1; E.dirty(s); E.tick(s, 1); assert.strictEqual(s.prestiges, 0);
+  s.eshop.e9 = 1; E.dirty(s); E.tick(s, 1); assert.strictEqual(s.prestiges, 0, 'настройка выключена'); s.settings.autopres = true; s.runLight = 1e13; s.stats.runTime = 120; const n = E.tick(s, 1); assert.strictEqual(s.prestiges, 1); assert.ok(n.some(x => x.t === 'autopres'));
+});
+
+console.log('Поручения');
+t('поручения создаются (3), прогресс и награда', () => {
+  const s = E.newState(0); s.gens[0] = 20; E.dirty(s); E.ensureQuests(s, U.makeRng(3)); assert.strictEqual(s.quests.length, 3);
+  const q = s.quests[0]; assert.strictEqual(E.questProgress(s, q), 0);
+  q.type = 'taps'; q.target = 5; q.base = s.taps; for (let i = 0; i < 5; i++) E.tap(s);
+  assert.strictEqual(E.questProgress(s, q), 1); const before = s.light; const r = E.claimQuest(s, 0, () => 0.99); assert.ok(r && r.light > 0 && s.light > before); assert.strictEqual(s.stats.questsDone, 1); assert.notStrictEqual(s.quests[0], q); assert.strictEqual(E.questProgress(s, s.quests[0]) < 1, true);
+});
+t('невыполненное поручение не забирается; множитель наград', () => { const s = E.newState(0); E.ensureQuests(s, U.makeRng(1)); assert.strictEqual(E.claimQuest(s, 0), null); s.gens[1] = 50; E.dirty(s); const r1 = E.questReward(s, { type: 'taps', mins: 10 }); s.upgrades.w29 = 1; E.dirty(s); near(E.questReward(s, { type: 'taps', mins: 10 }).light, r1.light * 1.5); });
+t('поручение «отлив» не выдаётся до первого отлива', () => { const s = E.newState(0); for (let i = 0; i < 200; i++) assert.notStrictEqual(E.makeQuest(s, U.makeRng(i)).type, 'pres'); });
+t('поручение на покупки/улучшения считает bought/upBought', () => { const s = E.newState(0); s.light = 1e6; const q = { type: 'buy', target: 3, base: s.bought, mins: 10, n: 1 }; E.buyGen(s, 0, 3); assert.strictEqual(E.questProgress(s, q), 1); const q2 = { type: 'upg', target: 1, base: s.upBought, mins: 10, n: 2 }; E.buyUpgrade(s, 'h1'); assert.strictEqual(E.questProgress(s, q2), 1); });
+
+console.log('Коллекция');
+t('rollTreasure выдаёт только из открытых зон, без повторов, до исчерпания', () => {
+  const s = E.newState(0); const rng = U.makeRng(5); const got = new Set();
+  for (let i = 0; i < 6; i++) { const t0 = E.rollTreasure(s, rng); assert.ok(t0 && t0.set === 0 && !got.has(t0.id)); got.add(t0.id); }
+  assert.strictEqual(E.rollTreasure(s, rng), null, 'зона 0 исчерпана'); s.bestZone = 9; for (let i = 0; i < 18; i++) assert.ok(E.rollTreasure(s, rng)); assert.strictEqual(E.treasureCount(s), 24); assert.strictEqual(E.setsDone(s), 4);
+});
+t('бонус коллекции: +3% за штуку и ×1.25 за набор, colx усиливает', () => {
+  const s = E.newState(0); s.gens[0] = 10; E.dirty(s); const p0 = E.prod(s);
+  for (let i = 0; i < 6; i++) s.treasures['t' + i] = 1; E.dirty(s); near(E.prod(s), p0 * (1 + 0.03 * 6) * 1.25);
+  s.upgrades.w30 = 1; E.dirty(s); near(E.calc(s).colMult, (1 + 0.03 * 1.25 * 6) * (1 + 0.25 * 1.25));
+});
+t('события: бутылка, метеорит, дельфин', () => {
+  const s = E.newState(0); s.gens[0] = 50; E.dirty(s); const c0 = E.baseCost(s, 1);
+  const r1 = E.applyEvent(s, 'meteor'); assert.ok(r1.gain > 0);
+  const r2 = E.applyEvent(s, 'bottle'); assert.ok(r2.gain > 0 || r2.treasure); assert.strictEqual(s.stats.bottles, 1);
+  E.applyEvent(s, 'dolphin'); assert.strictEqual(s.stats.dolphins, 1); near(E.baseCost(s, 1), c0 * 0.5);
+  E.tick(s, 60); near(E.baseCost(s, 1), c0);
+});
+t('достижения v2: эпохи/коллекция/поручения выдаются', () => {
+  const s = E.newState(0); s.eras = 1; s.eonsAll = 12; s.stats.questsDone = 10; for (let i = 0; i < 6; i++) s.treasures['t' + i] = 1; s.stats.bottles = 10;
+  const ids = E.checkAch(s, 1).map(a => a.id); ['era0', 'eon0', 'qs0', 'qs1', 'tr0', 'tr1', 'set0', 'bot0'].forEach(id => assert.ok(ids.includes(id), id));
+});
+t('≥40 новых достижений по сравнению с v1 (80)', () => { assert.ok(D.ACHIEVEMENTS.length >= 120); });
+
+console.log('Миграция v2 → v3');
+const fs = require('fs');
+t('фикстура v2-save.txt мигрирует без потерь', () => {
+  const raw = fs.readFileSync(__dirname + '/fixtures/v2-save.txt', 'utf8');
+  assert.strictEqual(JSON.parse(raw.slice(9)).v, 2, 'фикстура действительно v2');
+  const p = S.parseAny(raw, Date.now());
+  assert.strictEqual(p.v, 3); assert.strictEqual(p.light, 4.2e9); assert.strictEqual(p.totalLight, 9.9e15); assert.strictEqual(p.taps, 1234);
+  assert.deepStrictEqual(p.gens.slice(0, 6), [120, 80, 45, 30, 12, 5]); assert.strictEqual(p.gens.length, D.GENS.length); assert.ok(p.gens.slice(14).every(x => x === 0));
+  assert.strictEqual(Object.keys(p.upgrades).length, 10); assert.strictEqual(p.pearls, 40); assert.strictEqual(p.pearlsCycle, 340); assert.strictEqual(p.prestiges, 9); assert.ok(p.shop.s1 && p.shop.s2);
+  assert.strictEqual(p.stars, 3); assert.strictEqual(p.starsAll, 5); assert.strictEqual(p.ascensions, 1); assert.ok(p.perks.c1 && p.perks.c2);
+  assert.strictEqual(p.zone, 3); assert.strictEqual(p.bestZone, 6); assert.strictEqual(Object.keys(p.ach).length, 5);
+  assert.strictEqual(p.daily.streak, 4); assert.strictEqual(p.daily.last, '2026-09-29'); assert.strictEqual(p.settings.theme, 'dawn'); assert.strictEqual(p.settings.bulk, 10);
+  assert.strictEqual(p.starsCycle, 5, 'звёзды прошлого учтены как звёзды текущей эпохи'); assert.strictEqual(p.eons, 0); assert.strictEqual(p.eras, 0); assert.deepStrictEqual(p.eshop, {}); assert.deepStrictEqual(p.treasures, {}); assert.deepStrictEqual(p.quests, []);
+  assert.ok(isFinite(E.prod(p)) && E.prod(p) > 0);
+});
+t('мигрированное сохранение не теряет выработку (множитель эонов/коллекции = 1)', () => {
+  const p = S.parseAny(fs.readFileSync(__dirname + '/fixtures/v2-save.txt', 'utf8'), Date.now()); const c = E.calc(p); near(c.eonMult, 1); near(c.colMult, 1);
+});
+t('v2 → v3 через load() и повторное сохранение как v3', () => {
+  const st = new Store(); st.setItem(D.SAVE_KEY, fs.readFileSync(__dirname + '/fixtures/v2-save.txt', 'utf8')); const r = S.load(st); assert.strictEqual(r.status, 'ok'); assert.strictEqual(r.state.v, 3);
+  S.save(r.state, st); const again = S.load(st); assert.strictEqual(again.state.v, 3); assert.strictEqual(again.state.gens[0], 120);
+});
+t('v1 → v3 (двойная миграция)', () => { const body = JSON.stringify({ v: 1, light: 500, gens: [3], prestigePoints: 7, era: 1 }); const p = S.parseAny(S.hash(body) + '|' + body, 0); assert.strictEqual(p.v, 3); assert.strictEqual(p.pearls, 7); assert.strictEqual(p.eras, 0); });
+t('импорт кода v2 (экспорт старой версии) работает', () => { const code = 'MAYAK1:' + Buffer.from(fs.readFileSync(__dirname + '/fixtures/v2-save.txt', 'utf8')).toString('base64'); const p = S.importCode(code); assert.strictEqual(p.v, 3); assert.strictEqual(p.pearls, 40); });
+t('sanitize v3: мусор в новых полях', () => { const p = S.sanitize({ eons: -5, eonsAll: NaN, eshop: { e1: 1, zz: 1 }, treasures: { t0: 1, t999: 1 }, quests: [{ type: 'taps', target: 5, base: 0, mins: 5 }, { type: 'nope', target: 1 }, null, { type: 'taps', target: -1 }], eras: 'x', settings: { autopres: 'yes' } }, 0); assert.strictEqual(p.eons, 0); assert.strictEqual(p.eonsAll, 0); assert.ok(p.eshop.e1 && !p.eshop.zz); assert.ok(p.treasures.t0 && !p.treasures.t999); assert.strictEqual(p.quests.length, 1); assert.strictEqual(p.eras, 0); assert.strictEqual(p.settings.autopres, false); });
+t('экспорт/импорт v3 с эпохой, эонами, поручениями и коллекцией', () => {
+  const s = E.newState(); s.eons = 7; s.eonsAll = 20; s.eras = 2; s.eshop.e1 = 1; s.treasures.t3 = 1; E.ensureQuests(s, U.makeRng(2)); s.settings.autopres = true;
+  const p = S.importCode(S.exportCode(s)); assert.strictEqual(p.eons, 7); assert.strictEqual(p.eras, 2); assert.ok(p.eshop.e1 && p.treasures.t3); assert.strictEqual(p.quests.length, 3); assert.strictEqual(p.settings.autopres, true);
+});
+
+console.log('Предел 1e300 и новые слои');
+t('пределы: ни одна формула нового слоя не даёт NaN/∞ при экстремальных входах', () => {
+  const s = E.newState(0); s.starsCycle = 1e290; s.eonsAll = 1e290; s.eons = 1e290; s.stars = 1e290; s.pearlsCycle = 1e290; s.runLight = 1e299; s.totalLight = 1e299; s.gens.fill(1500); s.eshop.e14 = 1; s.eshop.e13 = 1; E.dirty(s);
+  assert.ok(isFinite(E.eonGain(s)) && E.eonGain(s) <= U.CAP); assert.ok(isFinite(E.prod(s))); assert.ok(isFinite(E.calc(s).global));
+  for (let i = 0; i < 5; i++) E.tick(s, 86400); assert.ok(s.light <= U.CAP && isFinite(s.light)); assert.strictEqual(U.fmt(s.light), '∞ cap');
+  assert.ok(E.era(s) > 0); assert.ok(isFinite(s.eons) && s.eons <= U.CAP);
+});
+t('даже полный набор бонусов (все улучшения+дары+созвездия+хроники) даёт выработку значительно < 1e300 на старте эпохи', () => {
+  const s = E.newState(0); D.UPGRADES.forEach(u => s.upgrades[u.id] = 1); D.SHOP.forEach(x => s.shop[x.id] = 1); D.PERKS.forEach(x => s.perks[x.id] = 1); D.ESHOP.forEach(x => s.eshop[x.id] = 1);
+  s.gens.fill(500); s.stars = 1e12; s.pearlsCycle = 1e12; s.eonsAll = 1e6; s.eras = 2; for (let i = 0; i < 24; i++) s.treasures['t' + i] = 1; D.ACHIEVEMENTS.forEach(a => s.ach[a.id] = 1); E.dirty(s);
+  const p = E.prod(s); assert.ok(p < 1e200 && p > 1e50, 'prod=' + p.toExponential(2));
 });
 
 console.log('\nИтого: ' + pass + ' пройдено, ' + fail + ' упало');

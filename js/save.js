@@ -47,6 +47,20 @@
       if (o.stars == null) o.stars = 0;
       if (!o.daily) o.daily = { last: '', streak: 0, best: 0, total: 0 };
       o.v = 2; return o;
+    },
+    // v2 -> v3: третий слой (Эпохи/эоны), поручения, коллекция. Весь прежний прогресс сохраняется.
+    2: function (o) {
+      // все звёзды, накопленные до v3, принадлежат первой (текущей) эпохе
+      if (o.starsCycle == null) o.starsCycle = Math.max(+o.starsAll || 0, +o.stars || 0);
+      if (o.eons == null) o.eons = 0;
+      if (o.eonsAll == null) o.eonsAll = 0;
+      if (o.eras == null) o.eras = 0;
+      if (!o.eshop) o.eshop = {};
+      if (!o.treasures) o.treasures = {};
+      if (!Array.isArray(o.quests)) o.quests = [];
+      if (o.bought == null) o.bought = 0;
+      if (o.upBought == null) o.upBought = 0;
+      o.v = 3; return o;
     }
   };
   function migrate(o) {
@@ -74,15 +88,22 @@
     if (!o || typeof o !== 'object') return d;
     ['light', 'runLight', 'totalLight'].forEach(function (k) { s[k] = num(o[k], 0, 0, C); });
     s.runLight = Math.min(s.runLight, s.totalLight || s.runLight);
-    ['taps', 'autoTaps', 'events', 'prestiges', 'ascensions'].forEach(function (k) { s[k] = Math.floor(num(o[k], 0, 0, 1e15)); });
-    ['pearls', 'pearlsCycle', 'pearlsAll', 'stars', 'starsAll', 'luckyTotal'].forEach(function (k) { s[k] = Math.floor(num(o[k], 0, 0, C)); });
-    s.pearlsAll = Math.max(s.pearlsAll, s.pearls); s.starsAll = Math.max(s.starsAll, s.stars);
+    ['taps', 'autoTaps', 'events', 'prestiges', 'ascensions', 'eras', 'questSeq', 'bought', 'upBought'].forEach(function (k) { s[k] = Math.floor(num(o[k], 0, 0, 1e15)); });
+    ['pearls', 'pearlsCycle', 'pearlsAll', 'stars', 'starsAll', 'starsCycle', 'eons', 'eonsAll', 'luckyTotal'].forEach(function (k) { s[k] = Math.floor(num(o[k], 0, 0, C)); });
+    s.pearlsAll = Math.max(s.pearlsAll, s.pearls); s.starsAll = Math.max(s.starsAll, s.stars); s.eonsAll = Math.max(s.eonsAll, s.eons);
+    s.starsCycle = Math.max(s.starsCycle, s.stars);
     s.pearlsCycle = Math.max(s.pearlsCycle, 0);
     s.created = num(o.created, now, 0, now + 1e10); s.savedAt = num(o.savedAt, now, 0, Infinity);
     if (Array.isArray(o.gens)) for (var i = 0; i < D.GENS.length; i++) s.gens[i] = Math.floor(num(o.gens[i], 0, 0, E.MAX_OWN));
     s.upgrades = boolMap(o.upgrades, function (k) { return !!D.UPG[k]; });
     s.shop = boolMap(o.shop, function (k) { return !!D.SHOPI[k]; });
     s.perks = boolMap(o.perks, function (k) { return !!D.PERKI[k]; });
+    s.eshop = boolMap(o.eshop, function (k) { return !!D.ESHOPI[k]; });
+    s.treasures = boolMap(o.treasures, function (k) { return D.TREASURES.some(function (t) { return t.id === k; }); });
+    s.quests = [];
+    if (Array.isArray(o.quests)) o.quests.slice(0, 6).forEach(function (q) {
+      if (q && D.QTYPEI[q.type] && q.target > 0) s.quests.push({ n: Math.floor(num(q.n, 0, 0, 1e9)), type: q.type, target: num(q.target, 1, 1, C), base: num(q.base, 0, 0, C), mins: num(q.mins, 10, 1, 1000) });
+    });
     s.ach = boolMap(o.ach, function (k) { return !!D.ACH[k]; });
     s.zone = Math.floor(num(o.zone, 0, 0, D.ZONES.length - 1));
     s.bestZone = Math.max(s.zone, Math.floor(num(o.bestZone, 0, 0, D.ZONES.length - 1)));
@@ -99,6 +120,7 @@
       s.settings.theme = ['night', 'dawn', 'dark'].indexOf(o.settings.theme) >= 0 ? o.settings.theme : 'night';
       s.settings.bulk = [1, 10, 100, 'max'].indexOf(o.settings.bulk) >= 0 ? o.settings.bulk : 1;
       s.settings.tab = typeof o.settings.tab === 'string' ? o.settings.tab.slice(0, 12) : 'gens';
+      s.settings.autopres = o.settings.autopres === true;
     }
     s.evTimer = num(o.evTimer, 100, 0, 1000);
     s.v = D.SAVE_VERSION;

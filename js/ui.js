@@ -4,7 +4,7 @@
   var U = root.MayakUtil, D = root.MayakData, E = root.MayakEngine, A = root.MayakAudio, Sc = root.MayakScene;
   var fmt = U.fmt, $ = function (id) { return document.getElementById(id); };
   var G = null; // игра: {s, save(), ...}
-  var els = {}, rows = { gen: [], upg: {}, shop: {}, perk: {}, ach: {} }, upgFilter = 'avail', floaters = 0, comboT = [], curTab = 'gens';
+  var els = {}, rows = { gen: [], upg: {}, shop: {}, perk: {}, ach: {}, eshop: {}, tr: {}, q: [] }, upgFilter = 'avail', floaters = 0, comboT = [], curTab = 'gens';
 
   function h(tag, cls, html) { var e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; }
   function esc(t) { return String(t).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
@@ -110,7 +110,16 @@
       '<div class="kv"><span>Множитель звёзд сейчас → после</span><span id="asc-mult"></span></div>' +
       '<div class="progress"><i id="asc-bar" style="width:0"></i></div>' +
       '<button class="btn purple" id="asc-btn">Вознестись</button></div>' +
-      '<h2 class="sec">✨ Созвездия <span style="font-weight:400;text-transform:none">(⭐ <b id="asc-have">0</b> · навсегда)</span></h2><div id="perkList"></div>';
+      '<h2 class="sec">✨ Созвездия <span style="font-weight:400;text-transform:none">(⭐ <b id="asc-have">0</b> · до Эпохи)</span></h2><div id="perkList"></div>' +
+      '<h2 class="sec">♾️ Эпоха</h2>' +
+      '<div class="card" id="era-card"><p>Третий слой. Эпоха сбрасывает <b>всё</b>, включая ⭐ звёзды, созвездия и дары. Взамен даёт <b>🌀 эоны</b>: они навсегда усиливают выработку и покупают <b>хроники</b>. Вторая Эпоха откроет зону «Океан начала».</p>' +
+      '<div class="kv"><span>Эонов за Эпоху</span><span class="big" id="era-gain" style="font-size:20px;color:#7fe8ff">0</span></div>' +
+      '<div class="kv"><span>Звёзд за эту эпоху</span><span id="era-cycle"></span></div>' +
+      '<div class="kv"><span>Эпох пройдено</span><span id="era-n"></span></div>' +
+      '<div class="kv"><span>Множитель эонов сейчас → после</span><span id="era-mult"></span></div>' +
+      '<div class="progress"><i id="era-bar" style="width:0"></i></div>' +
+      '<button class="btn" id="era-btn" style="background:linear-gradient(#5fe0ff,#2a86d8);border-color:#a5efff">Начать новую Эпоху</button></div>' +
+      '<h2 class="sec">📚 Хроники эонов <span style="font-weight:400;text-transform:none">(🌀 <b id="era-have">0</b> · навсегда)</span></h2><div id="eshopList"></div>';
     var sl = $('shopList');
     D.SHOP.forEach(function (it) {
       var r = h('div', 'row'), c = { it: it };
@@ -127,6 +136,15 @@
       c.btn.addEventListener('click', function () { G.buyPerk(it.id); });
       rows.perk[it.id] = c; pl.appendChild(r);
     });
+    var el = $('eshopList');
+    D.ESHOP.forEach(function (it) {
+      var r = h('div', 'row'), c = { it: it };
+      r.innerHTML = '<div class="ico">' + it.emoji + '</div><div class="mid"><div class="nm">' + it.name + '</div><div class="ds">' + it.desc + '</div></div><button class="buy"><b></b><small></small></button>';
+      c.row = r; c.btn = r.querySelector('.buy'); c.b = c.btn.querySelector('b'); c.sm = c.btn.querySelector('small');
+      c.btn.addEventListener('click', function () { G.buyEshop(it.id); });
+      rows.eshop[it.id] = c; el.appendChild(r);
+    });
+    $('era-btn').addEventListener('click', function () { G.askEra(); });
     $('pr-btn').addEventListener('click', function () { G.askPrestige(); });
     $('asc-btn').addEventListener('click', function () { G.askAscend(); });
   }
@@ -134,12 +152,30 @@
   function buildRewards() {
     var t = $('tab-rew');
     t.innerHTML = '<div class="card" id="dailyCard"><h3>📅 Ежедневная награда</h3><div class="days" id="dailyDays"></div><p id="dailyText"></p><button class="btn gold" id="dailyBtn">Забрать</button></div>' +
+      '<h2 class="sec">📋 Поручения порта <span style="font-weight:400;text-transform:none" id="qCount"></span></h2><div id="questList"></div>' +
+      '<h2 class="sec">💎 Коллекция сокровищ <span style="font-weight:400;text-transform:none" id="colCount"></span></h2><div class="card" id="colCard"></div>' +
       '<h2 class="sec">🏆 Достижения <span style="font-weight:400;text-transform:none" id="achCount"></span></h2><div class="grid" id="achGrid"></div>';
     var gr = $('achGrid');
     D.ACHIEVEMENTS.forEach(function (a) {
       var e = h('div', 'ach', '<div class="e">' + a.emoji + '</div><div><b>' + esc(a.name) + '</b><small>' + esc(a.desc) + '</small><small style="color:var(--gold)">+' + a.b + '% к выработке</small></div>');
       rows.ach[a.id] = e; gr.appendChild(e);
     });
+    var ql = $('questList');
+    for (var qi = 0; qi < D.BAL.questSlots; qi++) (function (idx) {
+      var r = h('div', 'row'), c = {};
+      r.innerHTML = '<div class="ico"></div><div class="mid"><div class="nm"></div><div class="ds"></div><div class="mbar"><i></i></div></div><button class="buy"><b></b><small></small></button>';
+      c.row = r; c.ico = r.querySelector('.ico'); c.nm = r.querySelector('.nm'); c.ds = r.querySelector('.ds'); c.bar = r.querySelector('.mbar i'); c.btn = r.querySelector('.buy'); c.b = c.btn.querySelector('b'); c.sm = c.btn.querySelector('small');
+      c.btn.addEventListener('click', function () { G.claimQuest(idx); });
+      rows.q.push(c); ql.appendChild(r);
+    })(qi);
+    var cc = $('colCard');
+    D.TSETS.forEach(function (st, si) {
+      var d = h('div'); d.innerHTML = '<div class="kv"><span>' + st.emoji + ' ' + st.name + '</span><span id="set-' + si + '"></span></div><div class="grid" style="grid-template-columns:repeat(6,1fr);gap:4px;margin:6px 0 10px" id="setgrid-' + si + '"></div>';
+      cc.appendChild(d);
+      var gr = d.querySelector('.grid');
+      D.TREASURES.forEach(function (t) { if (t.set !== si) return; var x = h('div', 'day', '<span class="e">' + t.emoji + '</span>'); x.style.padding = '6px 0'; x.title = t.name; rows.tr[t.id] = x; gr.appendChild(x); });
+    });
+    cc.appendChild(h('p', '', 'Сокровища находят в бутылках с запиской и в сундуках за поручения. Каждое даёт +3% к выработке, полный набор из 6 — ещё ×1.25.'));
     $('dailyBtn').addEventListener('click', function () { G.claimDaily(); });
   }
 
@@ -150,7 +186,8 @@
       '<h2 class="sec">⚙️ Настройки</h2><div class="card">' +
       '<div class="sw"><span>🔊 Звук</span><button class="tog" id="set-sound" aria-label="Звук"></button></div>' +
       '<div class="sw"><span>✨ Частицы</span><button class="tog" id="set-part" aria-label="Частицы"></button></div>' +
-      '<div class="sw"><span>🎨 Тема</span><span id="themeBtns"></span></div></div>' +
+      '<div class="sw"><span>🎨 Тема</span><span id="themeBtns"></span></div>' +
+      '<div class="sw" id="row-autopres" hidden><span>🤖 Автоотлив</span><button class="tog" id="set-autopres" aria-label="Автоотлив"></button></div></div>' +
       '<h2 class="sec">💾 Данные</h2><div class="card"><p>Игра сохраняется автоматически. Код сохранения можно перенести на другое устройство.</p>' +
       '<button class="btn ghost" id="btn-export">📤 Экспорт (показать код)</button>' +
       '<button class="btn ghost" id="btn-import">📥 Импорт из кода</button>' +
@@ -162,6 +199,7 @@
     });
     $('set-sound').addEventListener('click', function () { G.toggle('sound'); });
     $('set-part').addEventListener('click', function () { G.toggle('particles'); });
+    $('set-autopres').addEventListener('click', function () { G.toggle('autopres'); });
     $('btn-export').addEventListener('click', function () { G.showExport(); });
     $('btn-import').addEventListener('click', function () { G.showImport(); });
     $('btn-reset').addEventListener('click', function () { G.askReset(); });
@@ -174,7 +212,7 @@
     var c = E.calc(s), p = E.prod(s);
     setText(els.light, fmt(s.light)); setText(els.rate, fmt(p, true));
     setText(els.zoneName, D.ZONES[s.zone].emoji + ' ' + D.ZONES[s.zone].name);
-    els.pearlPill.hidden = !(s.pearlsAll > 0); els.starPill.hidden = !(s.starsAll > 0);
+    els.pearlPill.hidden = !(s.pearlsAll > 0); els.starPill.hidden = !(s.starsAll > 0); els.eonPill.hidden = !(s.eonsAll > 0); setText(els.eonsN, fmt(s.eons));
     setText(els.pearlsN, fmt(s.pearls)); setText(els.starsN, fmt(s.stars));
     var bm = E.buffMult(s); var tag = els.buffTag;
     if (bm > 1 || s.buffs.tapfrenzy > 0) { tag.hidden = false; setText(tag, (bm > 1 ? '×' + (Math.round(bm * 10) / 10) : '') + (s.buffs.tapfrenzy > 0 ? ' 👆×' + E.TAPFRENZY : '')); } else tag.hidden = true;
@@ -184,7 +222,8 @@
     if (nx == null) { bar.style.width = '100%'; setText(tx, 'Все зоны открыты'); }
     else {
       var z = D.ZONES[nx];
-      if (z.needAscend && s.ascensions < z.needAscend && s.runLight >= z.need) { bar.style.width = '100%'; setText(tx, '🌠 «' + z.name + '»: нужно Вознесение'); }
+      if (z.needEra && s.eras < z.needEra) { bar.style.width = s.runLight >= z.need ? '100%' : Math.max(0, Math.min(100, Math.log10(Math.max(s.runLight, 1)) / Math.log10(z.need) * 100)) + '%'; setText(tx, '♾️ «' + z.name + '»: нужно Эпох — ' + z.needEra + ' (' + s.eras + ')'); }
+      else if (z.needAscend && s.ascensions < z.needAscend && s.runLight >= z.need) { bar.style.width = '100%'; setText(tx, '🌠 «' + z.name + '»: нужно Вознесение'); }
       else {
         var lo = Math.log10(Math.max(D.ZONES[s.zone].need, 1)), hi = Math.log10(z.need), cur = Math.log10(Math.max(s.runLight, 1));
         var pct = Math.max(0, Math.min(1, (cur - lo) / (hi - lo)));
@@ -193,7 +232,7 @@
     }
   }
   function updateBuffs(s) {
-    var box = els.buffs, names = { frenzy: ['⭐ Безумие ×7', 30], tapfrenzy: ['👆 Золотые пальцы ×20', 20], wind: ['🌬️ Попутный ветер ×1.5', 60], whale: ['🐋 Кит-светоносец ×77', 10] };
+    var box = els.buffs, names = { frenzy: ['⭐ Безумие ×7', 30], tapfrenzy: ['👆 Золотые пальцы ×20', 20], wind: ['🌬️ Попутный ветер ×1.5', 60], whale: ['🐋 Кит-светоносец ×77', 10], dolphin: ['🐬 Дельфин: огни −50%', 45] };
     var keys = Object.keys(s.buffs).sort(), sig = keys.join(',');
     if (box._sig !== sig) { box._sig = sig; box.innerHTML = ''; keys.forEach(function (k) { var d = h('div', 'buff', names[k][0] + ' <span></span><i></i>'); d.dataset.k = k; box.appendChild(d); }); }
     Array.prototype.forEach.call(box.children, function (d) {
@@ -204,7 +243,7 @@
   function updateStar(s) {
     var b = els.starBtn;
     if (!s.star) { b.hidden = true; return; }
-    if (b.hidden) { b.hidden = false; b.textContent = s.star.kind === 'whale' ? '🐋' : '⭐'; setCls(b, 'whale', s.star.kind === 'whale'); var sz = Sc.size(); b.style.left = (s.star.x * sz.w) + 'px'; b.style.top = (s.star.y * sz.h) + 'px'; A.star(); }
+    if (b.hidden) { b.hidden = false; b.textContent = { whale: '🐋', dolphin: '🐬', bottle: '🍾', meteor: '☄️' }[s.star.kind] || '⭐'; setCls(b, 'whale', s.star.kind === 'whale'); var sz = Sc.size(); b.style.left = (s.star.x * sz.w) + 'px'; b.style.top = (s.star.y * sz.h) + 'px'; A.star(); }
   }
   function updateGens(s) {
     var bulk = s.settings.bulk, shown = false, lockedShown = false;
@@ -224,7 +263,7 @@
       setCls(c.row, 'can', can);
     }
     var next = -1; for (i = 0; i < D.GENS.length; i++) if (!E.genUnlocked(s, i)) { next = i; break; }
-    if (next >= 0) { var zz = D.ZONES[D.GENS[next].zone]; els.genLock.hidden = false; els.genLock.querySelector('.nm').textContent = 'Новые огни: ' + D.GENS[next].emoji + ' ' + D.GENS[next].name; els.genLock.querySelector('.ds').textContent = 'Откроются в зоне «' + zz.name + '» (' + fmt(zz.need) + ' света за забег)' + (zz.needAscend ? ' — после Вознесения' : ''); }
+    if (next >= 0) { var zz = D.ZONES[D.GENS[next].zone]; els.genLock.hidden = false; els.genLock.querySelector('.nm').textContent = 'Новые огни: ' + D.GENS[next].emoji + ' ' + D.GENS[next].name; els.genLock.querySelector('.ds').textContent = 'Откроются в зоне «' + zz.name + '» (' + fmt(zz.need) + ' света за забег)' + (zz.needEra ? ' — после ' + zz.needEra + '-й Эпохи' : zz.needAscend ? ' — после Вознесения' : ''); }
     else els.genLock.hidden = true;
   }
   var upgAvailCount = 0;
@@ -277,7 +316,20 @@
       setCls(r.row, 'owned', own); setCls(r.row, 'can', !own && s.stars >= it.cost);
       setText(r.b, own ? '✔' : '⭐ ' + fmt(it.cost)); setText(r.sm, own ? 'открыто' : '');
     });
-    var b = $('badge-pres'); b.hidden = !(gain >= 1 && (s.prestiges === 0 || gain >= Math.max(1, s.pearlsCycle * 0.5))) && !(sg >= 1);
+    var eg = E.eonGain(s);
+    setText($('era-gain'), '+' + fmt(eg)); setText($('era-cycle'), fmt(s.starsCycle) + ' (порог ' + D.BAL.eraBase + ')'); setText($('era-n'), String(s.eras));
+    var e1 = Math.pow(1 + D.BAL.eonPer * s.eonsAll, D.BAL.eonPow), e2 = Math.pow(1 + D.BAL.eonPer * (s.eonsAll + eg), D.BAL.eonPow);
+    setText($('era-mult'), '×' + e1.toFixed(2) + ' → ×' + e2.toFixed(2));
+    var enx = E.nextEonAt(s), eprv = eg > 0 ? Math.pow(eg, 1 / D.BAL.eraExp) * D.BAL.eraBase : 0;
+    $('era-bar').style.width = Math.max(0, Math.min(100, (s.starsCycle - eprv) / (enx - eprv) * 100)) + '%';
+    $('era-btn').disabled = eg < 1; setText($('era-btn'), eg < 1 ? 'Нужно ' + D.BAL.eraBase + ' ⭐ за эпоху' : 'Начать Эпоху (+' + fmt(eg) + ' 🌀)');
+    setText($('era-have'), fmt(s.eons));
+    D.ESHOP.forEach(function (it) {
+      var r = rows.eshop[it.id], own = s.eshop[it.id];
+      setCls(r.row, 'owned', own); setCls(r.row, 'can', !own && s.eons >= it.cost);
+      setText(r.b, own ? '✔' : '🌀 ' + fmt(it.cost)); setText(r.sm, own ? 'открыто' : '');
+    });
+    var b = $('badge-pres'); b.hidden = !(gain >= 1 && (s.prestiges === 0 || gain >= Math.max(1, s.pearlsCycle * 0.5))) && !(sg >= 1) && !(eg >= 1);
   }
   function updateRewards(s, now) {
     var info = E.dailyInfo(s, now);
@@ -292,7 +344,27 @@
     $('dailyBtn').disabled = !info.canClaim; setText($('dailyBtn'), info.canClaim ? 'Забрать награду' : 'Уже получено сегодня');
     var n = 0; D.ACHIEVEMENTS.forEach(function (a) { var got = !!s.ach[a.id]; if (got) n++; setCls(rows.ach[a.id], 'got', got); });
     setText($('achCount'), '· ' + n + '/' + D.ACHIEVEMENTS.length + ' · бонус +' + E.achBonusPct(s) + '%');
-    var b = $('badge-rew'); b.hidden = !info.canClaim;
+    updateQuests(s);
+    var nt = E.treasureCount(s);
+    setText($('colCount'), '· ' + nt + '/' + D.TREASURES.length + ' · наборов ' + E.setsDone(s) + '/' + D.TSETS.length + ' · ×' + E.calc(s).colMult.toFixed(2));
+    D.TSETS.forEach(function (st, si) { var n = 0; D.TREASURES.forEach(function (t) { if (t.set === si && s.treasures[t.id]) n++; }); setText($('set-' + si), n + '/6' + (st.zone > s.bestZone ? ' 🔒 (зона «' + D.ZONES[st.zone].name + '»)' : '')); });
+    D.TREASURES.forEach(function (t) { var x = rows.tr[t.id], got = !!s.treasures[t.id]; setCls(x, 'done', false); x.style.opacity = got ? 1 : 0.28; x.style.filter = got ? 'none' : 'grayscale(1)'; x.style.borderColor = got ? 'var(--gold)' : ''; });
+    var b = $('badge-rew'); b.hidden = !info.canClaim && !questReady(s);
+  }
+  function questReady(s) { for (var i = 0; i < s.quests.length; i++) if (E.questProgress(s, s.quests[i]) >= 1) return true; return false; }
+  function updateQuests(s) {
+    E.ensureQuests(s);
+    var done = 0;
+    for (var i = 0; i < rows.q.length; i++) {
+      var c = rows.q[i], q = s.quests[i]; if (!q) continue;
+      var def = D.QTYPEI[q.type], pr = E.questProgress(s, q), rw = E.questReward(s, q);
+      c.ico.textContent = def.emoji; setText(c.nm, E.questText(s, q));
+      setText(c.ds, 'Награда: ' + fmt(rw.light) + ' света' + (rw.pearls ? ' + ' + rw.pearls + ' 🦪' : '') + ' · шанс сундука');
+      c.bar.style.width = (pr * 100).toFixed(0) + '%';
+      var ok = pr >= 1; if (ok) done++;
+      setCls(c.row, 'can', ok); setText(c.b, ok ? 'Забрать' : Math.floor(pr * 100) + '%'); setText(c.sm, ok ? '🎁' : '');
+    }
+    setText($('qCount'), '· выполнено: ' + s.stats.questsDone);
   }
   function row(k, v) { return '<div class="kv"><span>' + k + '</span><span>' + v + '</span></div>'; }
   function updateStats(s) {
@@ -304,12 +376,13 @@
       row('Касаний', fmt(s.taps) + (s.autoTaps ? ' (+' + fmt(s.autoTaps) + ' авто)' : '')) + row('Событий поймано', fmt(s.events)) +
       row('Отливов', fmt(s.prestiges)) + row('Жемчужин всего / за цикл', fmt(s.pearlsAll) + ' / ' + fmt(s.pearlsCycle)) + row('Рекорд жемчужин за забег', fmt(st.bestRunPearls)) +
       row('Самый быстрый отлив', st.fastestPrestige ? U.fmtTime(st.fastestPrestige) : '—') +
-      row('Вознесений', fmt(s.ascensions)) + row('Звёзд всего', fmt(s.starsAll)) +
+      row('Вознесений', fmt(s.ascensions)) + row('Звёзд всего / за эпоху', fmt(s.starsAll) + ' / ' + fmt(s.starsCycle)) +
+      row('Эпох / эонов всего', s.eras + ' / ' + fmt(s.eonsAll)) + row('Поручений выполнено', fmt(s.stats.questsDone)) + row('Сокровищ', E.treasureCount(s) + '/' + D.TREASURES.length) +
       row('Время забега', U.fmtTime(st.runTime)) + row('Время в игре', U.fmtTime(st.playTime)) +
       row('Получено за оффлайн', fmt(st.offlineTotal) + ' (' + st.offlineCount + ' раз)') +
       row('Ежедневный вход: серия / рекорд', s.daily.streak + ' / ' + s.daily.best) +
       row('Достижений', Object.keys(s.ach).length + '/' + D.ACHIEVEMENTS.length) +
-      row('Множители: 🦪 / ⭐ / 🏆', '×' + c.pearlMult.toFixed(2) + ' / ×' + c.starMult.toFixed(2) + ' / ×' + c.achMult.toFixed(2)) +
+      row('Множители: 🦪 / ⭐ / 🏆', '×' + c.pearlMult.toFixed(2) + ' / ×' + c.starMult.toFixed(2) + ' / ×' + c.achMult.toFixed(2)) + row('Множители: 🌀 / 💎', '×' + c.eonMult.toFixed(2) + ' / ×' + c.colMult.toFixed(2)) +
       row('Множитель зоны', '×' + c.zoneMult) + row('Общий множитель', '×' + fmt(c.global, true)) +
       row('Оффлайн: лимит / эффективность', c.offcap + ' ч / ' + Math.round(c.offeff * 100) + '%') +
       row('Начало игры', dt.toLocaleDateString('ru-RU')) +
@@ -317,6 +390,7 @@
   }
   function updateSettings(s) {
     setCls($('set-sound'), 'on', s.settings.sound); setCls($('set-part'), 'on', s.settings.particles);
+    $('row-autopres').hidden = !E.calc(s).autopres; setCls($('set-autopres'), 'on', s.settings.autopres);
     Array.prototype.forEach.call($('themeBtns').children, function (b) { b.style.outline = b.dataset.th === s.settings.theme ? '2px solid var(--gold)' : 'none'; });
   }
   function updateBulk(s) { Array.prototype.forEach.call(document.querySelectorAll('#bulkbar button'), function (b) { setCls(b, 'on', String(s.settings.bulk) === b.dataset.bulk); }); }
@@ -344,7 +418,7 @@
     if (slowTimer > 0.4) {
       slowTimer = 0; updateGens(s); updateUpgrades(false);
       if (curTab === 'pres') updatePrestige(s);
-      else { var b = $('badge-pres'); if (b._t === undefined || true) { var g = E.pearlGain(s), sg = E.starGain(s); b.hidden = !((g >= 1 && (s.prestiges === 0 || g >= Math.max(1, s.pearlsCycle * 0.5))) || sg >= 1); } }
+      else { var b = $('badge-pres'); if (b._t === undefined || true) { var g = E.pearlGain(s), sg = E.starGain(s); b.hidden = !((g >= 1 && (s.prestiges === 0 || g >= Math.max(1, s.pearlsCycle * 0.5))) || sg >= 1 || E.eonGain(s) >= 1); } }
       if (curTab === 'rew') updateRewards(s, Date.now()); else { var info = E.dailyInfo(s, Date.now()); $('badge-rew').hidden = !info.canClaim; }
       if (curTab === 'more') updateStats(s);
     }
@@ -352,7 +426,7 @@
 
   function init(game) {
     G = game;
-    ['light', 'rate', 'zoneName', 'pearlPill', 'starPill', 'pearlsN', 'starsN', 'buffTag', 'floaters', 'starBtn', 'buffs'].forEach(function (id) { els[id] = $(id); });
+    ['light', 'rate', 'zoneName', 'pearlPill', 'starPill', 'eonPill', 'eonsN', 'pearlsN', 'starsN', 'buffTag', 'floaters', 'starBtn', 'buffs'].forEach(function (id) { els[id] = $(id); });
     els.zoneBar = $('zoneProgBar'); els.zoneText = $('zoneProgText');
     buildGens(); buildUpgrades(); buildPrestige(); buildRewards(); buildMore();
     Array.prototype.forEach.call(document.querySelectorAll('#nav button'), function (b) { b.addEventListener('click', function () { A.click(); showTab(b.dataset.tab); }); });

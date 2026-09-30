@@ -6,17 +6,22 @@ function bestPurchase(s) {
   // ищем покупку с наименьшим сроком окупаемости (cost / прирост выработки)
   const p0 = E.prod(s); let best = null;
   const eff = (cost, dp) => dp > 0 ? cost / dp : Infinity;
+  const c0 = E.calc(s);
   for (let i = 0; i < D.GENS.length; i++) {
     if (!E.genUnlocked(s, i) || s.gens[i] >= E.MAX_OWN) continue;
     const cost = E.bulkCost(s, i, 1);
-    s.gens[i]++; E.dirty(s); const dp = E.prod(s) - p0; s.gens[i]--; E.dirty(s);
-    // если есть зависимые улучшения, генератор ценнее — но бот жадный
+    // маргинальный прирост (учёт рубежей ×2 — приближённо: следующий рубеж считаем сразу, если близко)
+    const n = s.gens[i]; let dp = n > 0 ? c0.genProd[i] / n : D.GENS[i].prod * c0.genx[i] * c0.global;
+    if (n === 0) dp = D.GENS[i].prod * c0.genx[i] * c0.global;
+    const nm = D.BAL.milestones.find(m => m > n);
+    if (nm && nm - n <= 3 && n > 0) dp *= 1.6;
+    dp *= E.buffMult(s);
     const r = eff(cost, dp);
     if (!best || r < best.r) best = { kind: 'g', i, cost, r };
   }
   for (const u of D.UPGRADES) {
-    if (E.upgStatus(s, u) !== 'avail') continue;
-    s.upgrades[u.id] = 1; E.dirty(s); const dp = E.prod(s) - p0; const tapv = 0; delete s.upgrades[u.id]; E.dirty(s);
+    if (E.upgStatus(s, u) !== 'avail' || u.cost > s.light * 30 + 1e3) continue;
+    s.upgrades[u.id] = 1; E.dirty(s); const dp = E.prod(s) - p0; delete s.upgrades[u.id]; E.dirty(s);
     let r = eff(u.cost, dp);
     if (dp === 0) r = u.e.t === 'tapx' || u.e.t === 'tapfrac' || u.e.t === 'auto' ? u.cost / Math.max(1, p0 * 0.02) : (u.cost / Math.max(1, p0 * 0.02)) * 3;
     if (u.e.t === 'cost') r = u.cost / Math.max(1e-9, p0 * 0.05);
@@ -32,6 +37,7 @@ function buyShopAll(s) {
     for (const it of D.SHOP) if (!s.shop[it.id] && s.pearls >= it.cost) { E.buyShop(s, it.id); bought = true; }
   }
 }
+function buyEshopAll(s) { for (const it of D.ESHOP) if (!s.eshop[it.id] && s.eons >= it.cost) E.buyEshop(s, it.id); }
 function buyPerks(s) { for (const it of D.PERKS) if (!s.perks[it.id] && s.stars >= it.cost) E.buyPerk(s, it.id); }
 
 /**
@@ -41,7 +47,7 @@ function buyPerks(s) { for (const it of D.PERKS) if (!s.perks[it.id] && s.stars 
 function simulate(opts) {
   const rng = U.makeRng(opts.seed || 1);
   const s = E.newState(0); s.settings.bulk = 1;
-  const log = { firstPrestige: null, prestiges: [], ascensions: [], zones: {}, milestones: [], tl: [] };
+  const log = { firstPrestige: null, prestiges: [], ascensions: [], eras: [], zones: {}, milestones: [], tl: [] };
   const cache0 = 0; let t = 0, nextCheck = 0, lastPrestigeT = 0;
   const maxT = (opts.maxDays || 30) * 86400;
   const tapRate = opts.tapsPerSec || 3;
@@ -58,7 +64,7 @@ function simulate(opts) {
       active = (tod % gap) < sesLen;
     }
     if (active) {
-      dt = t < 1800 ? 1 : (t < 4 * 3600 ? 3 : (t < 86400 ? 10 : 30));
+      dt = t < 1800 ? 1 : (t < 4 * 3600 ? 3 : (t < 86400 ? 10 : (t < 20 * 86400 ? 30 : 60)));
       // касания
       const ntap = tapRate * dt * (opts.activeFrac == null ? 0.7 : opts.activeFrac);
       const tv = E.tapValue(s); E.addLight(s, tv * ntap); s.taps += ntap;
@@ -103,8 +109,15 @@ function simulate(opts) {
       log.ascensions.push({ t, stars: g, totalStars: s.starsAll });
       buyShopAll(s);
     }
-    buyPerks(s);
-    if (t >= nextCheck) { log.tl.push({ t, light: s.totalLight, prod: E.prod(s), pearls: s.pearlsAll, stars: s.starsAll, zone: s.bestZone, ach: Object.keys(s.ach).length }); nextCheck = t + 86400 / 4; }
+    if (E.canEra(s) && shouldEra(s, opts)) {
+      const g = E.era(s); buyEshopAll(s); buyPerks(s); buyShopAll(s);
+      log.eras.push({ t, eons: g, totalEons: s.eonsAll, starsBefore: s.starsAll });
+    }
+    buyPerks(s); if (s.eons > 0) { buyEshopAll(s); if (log.eshopDone == null && Object.keys(s.eshop).length === D.ESHOP.length) log.eshopDone = t; }
+    // модель коллекции: одно сокровище на каждые 2 ч активной игры (бутылки/поручения), грубо
+    if (active && s.treasureAcc == null) s.treasureAcc = 0;
+    if (active) { s.treasureAcc += dt; if (s.treasureAcc > 7200) { s.treasureAcc = 0; E.rollTreasure(s, rng); E.dirty(s); } }
+    if (t >= nextCheck) { log.tl.push({ t, light: s.totalLight, prod: E.prod(s), pearls: s.pearlsAll, stars: s.starsAll, eons: s.eonsAll, eras: s.eras, nt: E.treasureCount(s), zone: s.bestZone, ach: Object.keys(s.ach).length }); nextCheck = t + 86400 / 4; }
     if (s.stats.capHit) break;
   }
   log.state = s; log.endT = t;
@@ -120,10 +133,15 @@ function shouldPrestige(s, gain, opts) {
   // не чаще, чем раз в 10 минут игрового времени забега
   return gain >= need && s.stats.runTime > (opts.minRun || 600);
 }
+function shouldEra(s, opts) {
+  const g = E.eonGain(s);
+  const first = opts.firstEra || 3;
+  return g >= Math.max(first, s.eonsAll * 0.5);
+}
 function shouldAscend(s, opts) {
   const g = E.starGain(s);
   const first = opts.firstAsc || 3;
-  return g >= Math.max(first, s.starsAll * 0.5);
+  return g >= Math.max(first, s.starsCycle * 0.5);
 }
 
 function hm(t) { return t < 3600 ? (t / 60).toFixed(1) + ' мин' : t < 86400 ? (t / 3600).toFixed(1) + ' ч' : (t / 86400).toFixed(1) + ' сут'; }
@@ -136,19 +154,24 @@ if (require.main === module) {
   };
   const out = {};
   const only = process.argv[2] && !process.argv[2].startsWith('--') ? process.argv[2] : null;
+  const days = +process.env.DAYS || 90;
   for (const [name, o] of Object.entries(profiles)) {
     if (only && !name.startsWith(only)) continue;
-    o.maxDays = 45;
+    o.maxDays = days;
     const r = simulate(o);
-    console.log('\n=== ' + name + ' ===');
+    const st = r.state;
+    console.log('\n=== ' + name + ' (' + days + ' сут) ===');
     console.log('Первый отлив:', r.firstPrestige == null ? 'нет' : hm(r.firstPrestige), '(жемчужин ' + (r.prestiges[0] && r.prestiges[0].pearls) + ')');
-    console.log('Зоны:', Object.entries(r.log ? {} : r.zones).map(([z, t]) => D.ZONES[z].name + '@' + hm(t)).join('; '));
-    console.log('Отливов:', r.prestiges.length, ' Вознесений:', r.ascensions.length);
-    r.ascensions.slice(0, 8).forEach((a, i) => console.log('  вознесение #' + (i + 1) + ' @ ' + hm(a.t) + ' +' + a.stars + '⭐ (всего ' + a.totalStars + ')'));
-    console.log('Достижений:', Object.keys(r.state.ach).length + '/' + D.ACHIEVEMENTS.length, ' Итог за', hm(r.endT), ': свет всего', U.fmt(r.state.totalLight), ' выработка', U.fmt(E.prod(r.state)) + '/с', ' ⭐', r.state.starsAll, ' 🦪', r.state.pearlsAll, r.state.stats.capHit ? '(∞ cap!)' : '');
-    console.log('Перки:', Object.keys(r.state.perks).length + '/' + D.PERKS.length, ' Дары:', Object.keys(r.state.shop).length + '/' + D.SHOP.length);
-    out[name] = { firstPrestige: r.firstPrestige, zones: r.zones, prestiges: r.prestiges.length, ascensions: r.ascensions.slice(0, 12), timeline: r.tl.filter((x, i) => i % 4 === 0).slice(0, 130), end: { t: r.endT, total: r.state.totalLight } };
+    console.log('Зоны:', Object.entries(r.zones).map(([z, t]) => D.ZONES[z].name + '@' + hm(t)).join('; '));
+    console.log('Отливов:', r.prestiges.length, ' Вознесений:', r.ascensions.length, ' Эпох:', r.eras.length);
+    console.log('  вознесения:', r.ascensions.slice(0, 5).map((a, i) => '#' + (i + 1) + '@' + hm(a.t) + ' +' + a.stars).join(' | '));
+    console.log('  эпохи:', r.eras.slice(0, 8).map((a, i) => '#' + (i + 1) + '@' + hm(a.t) + ' +' + a.eons + '🌀').join(' | '));
+    console.log('Хроники: куплено', Object.keys(st.eshop).length + '/' + D.ESHOP.length + (r.eshopDone ? ' (все @' + hm(r.eshopDone) + ')' : ''), ' Сокровищ:', E.treasureCount(st) + '/' + D.TREASURES.length, ' Достижений:', Object.keys(st.ach).length + '/' + D.ACHIEVEMENTS.length);
+    console.log('Итог: свет всего', U.fmt(st.totalLight), ' выработка', U.fmt(E.prod(st)) + '/с', ' ⭐', U.fmt(st.starsAll), ' 🌀', U.fmt(st.eonsAll), st.stats.capHit ? '(∞ cap!)' : '(cap не достигнут)');
+    console.log('Кривая (сут: всего света / зона / эоны):', r.tl.filter((x, i) => i % 20 === 0).map(x => (x.t / 86400).toFixed(0) + ':' + U.fmt(x.light) + '/z' + x.zone + '/' + x.eons).join('  '));
+    out[name] = { firstPrestige: r.firstPrestige, zones: r.zones, prestiges: r.prestiges.length, ascensions: r.ascensions.length, eras: r.eras.slice(0, 20), eshopDone: r.eshopDone || null,
+      timeline: r.tl.filter((x, i) => i % 20 === 0).map(x => ({ day: +(x.t / 86400).toFixed(1), light: x.light, prod: x.prod, zone: x.zone, stars: x.stars, eons: x.eons, ach: x.ach })), end: { t: r.endT, total: st.totalLight, eons: st.eonsAll, stars: st.starsAll } };
   }
-  if (process.argv.includes('--json')) require('fs').writeFileSync(__dirname + '/../sim-report.json', JSON.stringify(out, null, 1));
+  if (process.argv.includes('--json')) require('fs').writeFileSync(__dirname + '/../sim-report' + (only ? '-' + only.slice(0, 3) : '') + '.json', JSON.stringify(out, null, 1));
 }
 module.exports = { simulate, hm };

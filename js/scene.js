@@ -75,6 +75,36 @@
       // падающая звезда
       var ph = (t * 0.25) % 6; if (ph < 0.6) { var k = ph / 0.6; g.strokeStyle = 'rgba(255,255,255,' + (1 - k) + ')'; g.lineWidth = 1.5; g.beginPath(); var sx = W * (0.9 - k * 0.5), sy = H * (0.05 + k * 0.3); g.moveTo(sx, sy); g.lineTo(sx + 26, sy - 12); g.stroke(); }
     }
+    if (z.id === 'abyss') { // светящиеся медузы и пузыри
+      for (i = 0; i < 14; i++) {
+        var bx = ((stars[i].x + Math.sin(t * 0.2 + i) * 0.03) % 1) * W, by = (0.9 - ((stars[i].y * 1.6 + t * 0.03 * (1 + stars[i].s * 0.2)) % 0.9)) * H * 0.85, br = 2 + stars[i].r * 2.2;
+        g.globalAlpha = alpha * (0.25 + 0.3 * Math.sin(t * 1.5 + i)); g.fillStyle = i % 3 === 0 ? '#7ff5ff' : '#a7d8ff';
+        g.beginPath(); g.arc(bx, by, br, 0, 6.283); g.fill();
+        if (i % 4 === 0) { g.globalAlpha = alpha * 0.4; g.strokeStyle = '#7ff5ff'; g.lineWidth = 1; g.beginPath(); g.moveTo(bx, by + br); g.quadraticCurveTo(bx + 4, by + 12, bx - 2, by + 22); g.stroke(); }
+      }
+      g.globalAlpha = alpha;
+    }
+    if (z.id === 'clock') { // шестерни и песчинки
+      for (i = 0; i < 3; i++) {
+        var gx = W * (0.15 + i * 0.32), gy = H * (0.22 + (i % 2) * 0.12), gr = 22 + i * 8, ga = t * (i % 2 ? -0.4 : 0.4);
+        g.globalAlpha = alpha * 0.35; g.strokeStyle = '#e8b45a'; g.lineWidth = 3;
+        g.beginPath(); g.arc(gx, gy, gr, 0, 6.283); g.stroke();
+        for (var k = 0; k < 8; k++) { var a = ga + k * 0.785; g.beginPath(); g.moveTo(gx + Math.cos(a) * gr, gy + Math.sin(a) * gr); g.lineTo(gx + Math.cos(a) * (gr + 7), gy + Math.sin(a) * (gr + 7)); g.stroke(); }
+      }
+      g.globalAlpha = alpha * 0.7; g.fillStyle = '#ffdca0';
+      for (i = 0; i < 20; i++) { var sx = (stars[i].x * W + t * 8) % W, sy = ((stars[i].y * 1.5 + t * 0.05 * (1 + stars[i].s * 0.3)) % 0.75) * H; g.fillRect(sx, sy, 1.5, 1.5); }
+      g.globalAlpha = alpha;
+    }
+    if (z.id === 'origin') { // спираль начала
+      var cx0 = W * 0.5, cy0 = H * 0.3;
+      g.globalAlpha = alpha * 0.55;
+      for (var arm = 0; arm < 3; arm++) {
+        g.strokeStyle = ['#ff7bd8', '#7bd8ff', '#ffe27b'][arm]; g.lineWidth = 2; g.beginPath();
+        for (var q = 0; q < 60; q++) { var ang = q * 0.22 + arm * 2.094 + t * 0.3, rr = 4 + q * 2.2; var px = cx0 + Math.cos(ang) * rr * 1.6, py = cy0 + Math.sin(ang) * rr * 0.6; if (q) g.lineTo(px, py); else g.moveTo(px, py); }
+        g.stroke();
+      }
+      g.globalAlpha = alpha;
+    }
     if (z.id === 'edge') { // рассвет на горизонте
       var eg = g.createLinearGradient(0, H * 0.55, 0, H * 0.8); eg.addColorStop(0, 'rgba(255,150,80,0)'); eg.addColorStop(1, 'rgba(255,170,90,' + (0.45 + 0.1 * Math.sin(t)) + ')');
       g.fillStyle = eg; g.fillRect(0, H * 0.55, W, H * 0.25);

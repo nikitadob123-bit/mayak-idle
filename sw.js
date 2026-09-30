@@ -1,5 +1,5 @@
 /* Service worker «Хозяин маяка»: офлайн-first, версионный кэш, обновление по кнопке. */
-const VERSION = '1.0.0';
+const VERSION = '2.0.0';
 const CACHE = 'mayak-idle-v' + VERSION;
 const ASSETS = [
   './', './index.html', './manifest.json', './css/style.css',

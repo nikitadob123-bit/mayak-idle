@@ -6,7 +6,7 @@
   'use strict';
   var BAL = D.BAL, GENS = D.GENS, ZONES = D.ZONES, UPG = D.UPGRADES, clamp = Util.clamp;
   var MAX_OWN = 1500;
-  var EV_DUR = { frenzy: 30, tapfrenzy: 20, wind: 60, whale: 10 };
+  var EV_DUR = { frenzy: 30, tapfrenzy: 20, wind: 60, whale: 10, dolphin: 45 };
   var EV_MULT = { frenzy: 7, wind: 1.5, whale: 77 };
   var TAPFRENZY = 20;
 
@@ -19,12 +19,13 @@
       light: 0, runLight: 0, totalLight: 0, taps: 0, autoTaps: 0,
       gens: zeroGens(), upgrades: {},
       pearls: 0, pearlsCycle: 0, pearlsAll: 0, prestiges: 0, shop: {},
-      stars: 0, starsAll: 0, perks: {}, ascensions: 0,
+      stars: 0, starsAll: 0, starsCycle: 0, perks: {}, ascensions: 0,
+      eons: 0, eonsAll: 0, eras: 0, eshop: {}, treasures: {}, quests: [], questSeq: 0, bought: 0, upBought: 0,
       zone: 0, bestZone: 0,
       buffs: {}, star: null, evTimer: 100, events: 0, luckyTotal: 0,
       ach: {}, daily: { last: '', streak: 0, best: 0, total: 0 },
-      stats: { playTime: 0, runTime: 0, offlineTotal: 0, offlineCount: 0, maxProd: 0, bestRunPearls: 0, fastestPrestige: 0, capHit: 0 },
-      settings: { sound: true, theme: 'night', particles: true, bulk: 1, tab: 'gens' },
+      stats: { playTime: 0, runTime: 0, offlineTotal: 0, offlineCount: 0, maxProd: 0, bestRunPearls: 0, fastestPrestige: 0, capHit: 0, dolphins: 0, bottles: 0, questsDone: 0, bestEon: 0, autoPres: 0 },
+      settings: { sound: true, theme: 'night', particles: true, bulk: 1, tab: 'gens', autopres: false },
       autoAcc: 0, buyAcc: 0
     };
   }
@@ -37,7 +38,7 @@
     var c = {
       allx: 1, cost: 1, tapx: 1, tapfrac: 0, auto: 0, offcap: BAL.offlineCapH, offeff: BAL.offlineEff,
       evfreq: 1, evdur: 1, evpow: 1, pgain: 0, pearlEff: BAL.pearlPer, starEff: BAL.starPer, keepPearls: 0,
-      start: 0, startgens: 0, keeptap: false, autobuy: false,
+      start: 0, startgens: 0, keeptap: false, autobuy: false, sgain: 0, questx: 1, colx: 1, coldrop: 1, keepPerks: 0, autopres: false,
       genx: zeroGens().map(function () { return 1; }), syn: []
     };
     function eff(e) {
@@ -61,6 +62,12 @@
         case 'keeptap': c.keeptap = true; break;
         case 'autobuy': c.autobuy = true; break;
         case 'genx': c.genx[e.g] *= e.v; break;
+        case 'sgain': c.sgain += e.v; break;
+        case 'questx': c.questx *= e.v; break;
+        case 'colx': c.colx *= e.v; break;
+        case 'coldrop': c.coldrop *= e.v; break;
+        case 'keepPerks': c.keepPerks = Math.max(c.keepPerks, e.v); break;
+        case 'autopres': c.autopres = true; break;
         case 'syn': c.syn.push(e); break;
       }
     }
@@ -68,15 +75,19 @@
     for (i = 0; i < UPG.length; i++) if (s.upgrades[UPG[i].id]) eff(UPG[i].e);
     for (i = 0; i < D.SHOP.length; i++) if (s.shop[D.SHOP[i].id]) eff(D.SHOP[i].e);
     for (i = 0; i < D.PERKS.length; i++) if (s.perks[D.PERKS[i].id]) eff(D.PERKS[i].e);
+    for (i = 0; i < D.ESHOP.length; i++) if (s.eshop[D.ESHOP[i].id]) { eff(D.ESHOP[i].e); if (D.ESHOP[i].e2) eff(D.ESHOP[i].e2); }
     c.offeff = Math.min(1, c.offeff);
     c.pearlMult = Math.pow(1 + c.pearlEff * s.pearlsCycle, BAL.pearlPow);
     c.starMult = Math.pow(1 + c.starEff * s.stars, BAL.starPow);
+    c.eonMult = Math.pow(1 + BAL.eonPer * s.eonsAll, BAL.eonPow);
+    var nt = treasureCount(s), ns = setsDone(s);
+    c.colMult = (1 + 0.03 * c.colx * nt) * (1 + 0.25 * c.colx * ns);
     var ab = 0;
     for (var k = 0; k < D.ACHIEVEMENTS.length; k++) if (s.ach[D.ACHIEVEMENTS[k].id]) ab += D.ACHIEVEMENTS[k].b;
     c.achMult = 1 + 0.01 * ab;
     c.zoneMult = ZONES[s.zone].mult;
-    c.perm = c.pearlMult * c.starMult * c.achMult;
-    c.global = c.perm * c.allx * c.zoneMult;
+    c.perm = clamp(c.pearlMult * c.starMult * c.achMult * c.eonMult * c.colMult);
+    c.global = clamp(c.perm * c.allx * c.zoneMult);
     var sum = 0; c.genProd = [];
     for (i = 0; i < GENS.length; i++) {
       var n = s.gens[i], p = 0;
@@ -86,7 +97,7 @@
         for (var q = 0; q < c.syn.length; q++) if (c.syn[q].g === i) synm += c.syn[q].v * s.gens[c.syn[q].src];
         p = n * GENS[i].prod * Math.pow(2, ms) * c.genx[i] * synm;
       }
-      c.genProd.push(p * c.global); sum += p;
+      c.genProd.push(clamp(p * c.global)); sum += p;
     }
     c.prod = clamp(sum * c.global);
     c.tapBase = clamp(c.tapx * c.perm * c.zoneMult);
@@ -126,7 +137,7 @@
   }
 
   /* ---------- Генераторы ---------- */
-  function genCostMult(s) { return calc(s).cost; }
+  function genCostMult(s) { return calc(s).cost * (s.buffs.dolphin > 0 ? 0.5 : 1); }
   function baseCost(s, i) { return GENS[i].cost * genCostMult(s) * Math.pow(BAL.costGrowth, s.gens[i]); }
   function bulkCost(s, i, k) {
     var r = BAL.costGrowth;
@@ -152,7 +163,7 @@
     var cost = bulkCost(s, i, n);
     if (cost > s.light) return 0;
     s.light = clamp(s.light - cost);
-    s.gens[i] += n; dirty(s);
+    s.gens[i] += n; s.bought += n; dirty(s);
     return n;
   }
   function planBuy(s, i, k) { // для UI: сколько и за сколько
@@ -173,16 +184,38 @@
   function buyUpgrade(s, id) {
     var u = D.UPG[id];
     if (!u || upgStatus(s, u) !== 'avail' || s.light < u.cost) return false;
-    s.light = clamp(s.light - u.cost); s.upgrades[id] = 1; dirty(s);
+    s.light = clamp(s.light - u.cost); s.upgrades[id] = 1; s.upBought++; dirty(s);
     return true;
   }
   function ownedUpgrades(s) { var n = 0; for (var k in s.upgrades) if (s.upgrades[k]) n++; return n; }
+
+  /* ---------- Коллекция ---------- */
+  function treasureCount(s) { var n = 0; for (var k in s.treasures) if (s.treasures[k]) n++; return n; }
+  function setsDone(s) {
+    var n = 0;
+    D.TSETS.forEach(function (st, si) { var ok = true; D.TREASURES.forEach(function (t) { if (t.set === si && !s.treasures[t.id]) ok = false; }); if (ok) n++; });
+    return n;
+  }
+  function rollTreasure(s, rng) { // возвращает новое сокровище или null (всё собрано)
+    rng = rng || Math.random;
+    var pool = [], tot = 0;
+    D.TREASURES.forEach(function (t) {
+      if (s.treasures[t.id]) return;
+      var st = D.TSETS[t.set]; if (st.zone > s.bestZone) return;
+      pool.push([t, st.w]); tot += st.w;
+    });
+    if (!pool.length) return null;
+    var r = rng() * tot;
+    for (var i = 0; i < pool.length; i++) { r -= pool[i][1]; if (r < 0) return give(pool[i][0]); }
+    return give(pool[0][0]);
+    function give(t) { s.treasures[t.id] = 1; dirty(s); return t; }
+  }
 
   /* ---------- Зоны ---------- */
   function zoneFor(s) {
     var z = 0;
     for (var i = 0; i < ZONES.length; i++) {
-      if (s.runLight >= ZONES[i].need && (!ZONES[i].needAscend || s.ascensions >= ZONES[i].needAscend)) z = i;
+      if (s.runLight >= ZONES[i].need && (!ZONES[i].needAscend || s.ascensions >= ZONES[i].needAscend) && (!ZONES[i].needEra || s.eras >= ZONES[i].needEra)) z = i;
     }
     return z;
   }
@@ -197,7 +230,7 @@
     var g = Math.pow(s.runLight / BAL.prestigeBase, BAL.pearlExp) * (1 + c.pgain);
     return Math.floor(clamp(g));
   }
-  function starGain(s) { return Math.floor(clamp(Math.pow(s.pearlsCycle / BAL.ascendBase, BAL.starExp))); }
+  function starGain(s) { return Math.floor(clamp(Math.pow(s.pearlsCycle / BAL.ascendBase, BAL.starExp) * (1 + calc(s).sgain))); }
   function nextPearlAt(s) { // свет за забег, при котором жемчужин станет на 1 больше
     var c = calc(s), g = pearlGain(s) + 1;
     return Math.pow(g / (1 + c.pgain), 1 / BAL.pearlExp) * BAL.prestigeBase;
@@ -232,11 +265,33 @@
     if (g < 1) return 0;
     var c = calc(s);
     var kept = Math.floor(s.pearls * c.keepPearls);
-    s.stars += g; s.starsAll += g; s.ascensions++;
+    s.stars += g; s.starsAll += g; s.starsCycle += g; s.ascensions++;
     s.pearls = kept; s.pearlsCycle = 0; s.shop = {};
     dirty(s);
     startRun(s);
     return g;
+  }
+
+  /* ---------- Эпоха (третий слой) ---------- */
+  function eonGain(s) { return Math.floor(clamp(Math.pow(s.starsCycle / BAL.eraBase, BAL.eraExp))); }
+  function canEra(s) { return eonGain(s) >= 1; }
+  function nextEonAt(s) { return Math.pow(eonGain(s) + 1, 1 / BAL.eraExp) * BAL.eraBase; }
+  function era(s) {
+    var g = eonGain(s);
+    if (g < 1) return 0;
+    var c = calc(s), keepN = c.keepPerks, kept = {};
+    D.PERKS.forEach(function (p, i) { if (i < keepN && s.perks[p.id]) kept[p.id] = 1; });
+    s.stats.bestEon = Math.max(s.stats.bestEon, g);
+    s.eons += g; s.eonsAll += g; s.eras++;
+    s.stars = 0; s.starsCycle = 0; s.perks = kept; s.pearls = 0; s.pearlsCycle = 0; s.shop = {};
+    dirty(s);
+    startRun(s);
+    return g;
+  }
+  function buyEshop(s, id) {
+    var it = D.ESHOPI[id];
+    if (!it || s.eshop[id] || s.eons < it.cost) return false;
+    s.eons -= it.cost; s.eshop[id] = 1; dirty(s); return true;
   }
 
   function buyShop(s, id) {
@@ -273,7 +328,16 @@
     if (kind === 'lucky') {
       var g = (c.prod * 420 + 30 + tapValue(s) * 30) * c.evpow;
       addLight(s, g); out.gain = g; s.luckyTotal = clamp(s.luckyTotal + g);
+    } else if (kind === 'meteor') {
+      var g2 = (c.prod * 900 + 100) * c.evpow;
+      addLight(s, g2); out.gain = g2;
+    } else if (kind === 'bottle') {
+      s.stats.bottles++;
+      var tr = Math.random() < Math.min(0.9, 0.45 * c.coldrop) ? rollTreasure(s) : null;
+      if (tr) out.treasure = tr;
+      else { var g3 = (c.prod * 180 + 50) * c.evpow; addLight(s, g3); out.gain = g3; }
     } else {
+      if (kind === 'dolphin') s.stats.dolphins++;
       s.buffs[kind] = EV_DUR[kind] * c.evdur; dirty(s);
       out.dur = s.buffs[kind];
     }
@@ -285,6 +349,47 @@
     var k = s.star.kind; s.star = null;
     s.evTimer = nextEventDelay(s, Math.random);
     return applyEvent(s, k);
+  }
+
+  /* ---------- Поручения порта ---------- */
+  function statNow(s, stat) { return stat === 'totalLight' ? s.totalLight : (s[stat] || 0); }
+  function makeQuest(s, rng) {
+    rng = rng || Math.random;
+    var c = calc(s), types = D.QTYPES.filter(function (q) { return !q.min || q.min(s); });
+    var q = types[Math.floor(rng() * types.length)], target;
+    if (q.id === 'earn') target = Math.max(200, Math.floor(prod(s) * 60 * (10 + rng() * 20)));
+    else target = q.gen(s, rng);
+    var mins = q.mins * (0.8 + 0.5 * rng());
+    s.questSeq++;
+    return { n: s.questSeq, type: q.id, target: target, base: statNow(s, q.stat), mins: mins };
+  }
+  function ensureQuests(s, rng) {
+    if (!Array.isArray(s.quests)) s.quests = [];
+    while (s.quests.length < BAL.questSlots) s.quests.push(makeQuest(s, rng));
+  }
+  function questProgress(s, q) {
+    var def = D.QTYPEI[q.type]; if (!def) return 1;
+    var d = statNow(s, def.stat) - q.base;
+    return Math.max(0, Math.min(1, d / q.target));
+  }
+  function questReward(s, q) {
+    var c = calc(s);
+    return { light: Math.max(500, prod(s) * 60 * q.mins) * c.questx, pearls: q.type === 'pres' ? Math.round(2 * c.questx) : 0 };
+  }
+  function claimQuest(s, idx, rng) {
+    var q = s.quests[idx]; if (!q || questProgress(s, q) < 1) return null;
+    var r = questReward(s, q), c = calc(s);
+    addLight(s, r.light);
+    if (r.pearls) { s.pearls += r.pearls; s.pearlsAll += r.pearls; }
+    var out = { light: r.light, pearls: r.pearls, treasure: null };
+    if ((rng || Math.random)() < BAL.chestChance * Math.min(2, c.coldrop)) out.treasure = rollTreasure(s, rng);
+    s.stats.questsDone++;
+    s.quests[idx] = makeQuest(s, rng); dirty(s);
+    return out;
+  }
+  function questText(s, q) {
+    var def = D.QTYPEI[q.type]; if (!def) return '';
+    return def.text.replace('{n}', q.type === 'earn' ? Util.fmt(q.target) : String(q.target));
   }
 
   /* ---------- Основной тик ---------- */
@@ -331,6 +436,11 @@
         }
         if (best >= 0) { var k = Math.max(1, Math.min(maxAffordableLimit(s, best, s.light * 0.1), 25)); buyGen(s, best, k); }
       }
+    }
+    // автоотлив
+    if (c.autopres && s.settings.autopres && s.stats.runTime > 60) {
+      var pg = pearlGain(s);
+      if (pg >= 1 && pg >= Math.max(3, s.pearlsCycle * 0.5)) { prestige(s); s.stats.autoPres++; notes.push({ t: 'autopres', g: pg }); return notes; }
     }
     // зона
     var z = zoneFor(s);
@@ -418,6 +528,15 @@
       case 'shop': return Object.keys(s.shop).length >= t.n;
       case 'perks': return Object.keys(s.perks).length >= t.n;
       case 'offline': return s.stats.offlineCount >= t.n;
+      case 'eras': return s.eras >= t.n;
+      case 'eonsAll': return s.eonsAll >= t.n;
+      case 'treasures': return treasureCount(s) >= t.n;
+      case 'sets': return setsDone(s) >= t.n;
+      case 'quests': return s.stats.questsDone >= t.n;
+      case 'starsAll': return s.starsAll >= t.n;
+      case 'eshop': return Object.keys(s.eshop).length >= t.n;
+      case 'dolphins': return s.stats.dolphins >= t.n;
+      case 'bottles': return s.stats.bottles >= t.n;
     }
     return false;
   }
@@ -440,7 +559,9 @@
     upgStatus: upgStatus, buyUpgrade: buyUpgrade, ownedUpgrades: ownedUpgrades,
     zoneFor: zoneFor, zoneNext: zoneNext,
     pearlGain: pearlGain, starGain: starGain, nextPearlAt: nextPearlAt, canPrestige: canPrestige, prestige: prestige,
-    canAscend: canAscend, ascend: ascend, startRun: startRun, buyShop: buyShop, buyPerk: buyPerk,
+    canAscend: canAscend, ascend: ascend, eonGain: eonGain, canEra: canEra, nextEonAt: nextEonAt, era: era, buyEshop: buyEshop,
+    treasureCount: treasureCount, setsDone: setsDone, rollTreasure: rollTreasure,
+    ensureQuests: ensureQuests, questProgress: questProgress, questReward: questReward, claimQuest: claimQuest, questText: questText, makeQuest: makeQuest, startRun: startRun, buyShop: buyShop, buyPerk: buyPerk,
     nextEventDelay: nextEventDelay, spawnStar: spawnStar, applyEvent: applyEvent, clickStar: clickStar,
     tick: tick, computeOffline: computeOffline, applyOffline: applyOffline,
     dayKey: dayKey, dailyInfo: dailyInfo, claimDaily: claimDaily,

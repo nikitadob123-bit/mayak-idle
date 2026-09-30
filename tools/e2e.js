@@ -76,6 +76,29 @@ let ok = 0, bad = 0; const check = (n, c, extra) => { if (c) { ok++; console.log
   await page.locator('.modal .btn.gold').last().click(); await page.waitForTimeout(500);
   st = await page.evaluate(() => ({ p: __mayak.s.prestiges, pearls: __mayak.s.pearls, l: __mayak.s.light }));
   check('отлив через UI', st.p === 1 && st.pearls > 0, JSON.stringify(st));
+  // v2.0: поручения, коллекция, Эпоха
+  await page.locator('#nav button[data-tab="rew"]').click(); await page.waitForTimeout(400);
+  check('3 поручения на вкладке «Награды»', (await page.locator('#questList .row').count()) === 3);
+  check('коллекция: 24 ячейки', (await page.locator('#colCard .day').count()) === 24);
+  await page.evaluate(() => { const q = __mayak.s.quests[0]; q.type = 'taps'; q.target = 1; q.base = __mayak.s.taps - 5; });
+  await page.waitForTimeout(600);
+  await page.locator('#questList .row.can .buy').first().click(); await page.waitForTimeout(300);
+  check('поручение выполнено и заменено', await page.evaluate(() => __mayak.s.stats.questsDone === 1 && __mayak.s.quests.length === 3));
+  await page.evaluate(() => { const s = __mayak.s; s.treasures.t0 = 1; s.treasures.t1 = 1; MayakEngine.dirty(s); });
+  await page.waitForTimeout(600);
+  await page.screenshot({ path: path.join(outDir, '8-quests-collection.png') });
+  await page.evaluate(() => { const s = __mayak.s; s.starsCycle = 200000; s.stars = 5; s.starsAll = 200000; MayakEngine.dirty(s); });
+  await page.locator('#nav button[data-tab="pres"]').click(); await page.waitForTimeout(500);
+  await page.locator('#era-btn').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: path.join(outDir, '9-era.png') });
+  await page.locator('#era-btn').click(); await page.waitForTimeout(200);
+  await page.locator('.modal .btn.purple').last().click(); await page.waitForTimeout(500);
+  st = await page.evaluate(() => ({ e: __mayak.s.eras, eons: __mayak.s.eons, stars: __mayak.s.stars, pearls: __mayak.s.pearls }));
+  check('Эпоха через UI: эоны получены, звёзды сброшены', st.e === 1 && st.eons >= 1 && st.stars === 0, JSON.stringify(st));
+  await closeModals(page);
+  await page.locator('#eshopList .row .buy').first().scrollIntoViewIfNeeded();
+  await page.locator('#eshopList .row .buy').first().click({ force: true }); await page.waitForTimeout(200);
+  check('покупка хроники за эоны', await page.evaluate(() => !!__mayak.s.eshop.e1));
   // настройки / экспорт / импорт
   await page.locator('#nav button[data-tab="more"]').click(); await page.waitForTimeout(300);
   await page.locator('#set-sound').click();
@@ -90,6 +113,7 @@ let ok = 0, bad = 0; const check = (n, c, extra) => { if (c) { ok++; console.log
   await page.reload({ waitUntil: 'load' }); await page.waitForTimeout(1200);
   st = await page.evaluate(() => ({ p: __mayak.s.prestiges, ach: Object.keys(__mayak.s.ach).length }));
   check('сохранение пережило перезагрузку', st.p === 1, JSON.stringify(st));
+  check('v3: эпоха/эоны сохранились', await page.evaluate(() => __mayak.s.v === 3 && __mayak.s.eras === 1 && !!__mayak.s.eshop.e1));
   // оффлайн: отдельный контекст с заранее подготовленным сохранением (3 часа назад)
   {
     const S = require('../js/save.js'), E = require('../js/engine.js');
@@ -116,7 +140,7 @@ let ok = 0, bad = 0; const check = (n, c, extra) => { if (c) { ok++; console.log
   check('manifest иконки 192/512/maskable', ['192x192', '512x512'].every(sz => m.icons.some(i => i.sizes === sz && i.purpose === 'any')) && m.icons.some(i => i.purpose === 'maskable' && i.sizes === '512x512'));
   check('иконки отдаются', man.res.every(r => r[1] === 200), JSON.stringify(man.res.map(r => r[1])));
   const cacheKeys = await page.evaluate(async () => { const ks = await caches.keys(); const c = await caches.open(ks[0]); return { ks, n: (await c.keys()).length }; });
-  check('версионный кэш заполнен', cacheKeys.n >= 18 && /mayak-idle-v/.test(cacheKeys.ks[0]), JSON.stringify(cacheKeys));
+  check('версионный кэш заполнен', cacheKeys.n >= 18 && /mayak-idle-v2\.0\.0/.test(cacheKeys.ks[0]), JSON.stringify(cacheKeys));
   // офлайн-режим
   await ctx.setOffline(true);
   await page.reload({ waitUntil: 'load' }).catch(e => console.log('reload offline err', e.message)); await page.waitForTimeout(1200);
