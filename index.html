@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Хозяин маяка</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="description" content="Хозяин маяка — уютная инкрементальная игра: зажигай свет, покупай огни, открывай моря и звёзды. Работает офлайн.">
+<meta name="theme-color" content="#0f1b3a">
+<meta name="color-scheme" content="dark light">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Маяк">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="icon" href="icons/icon-192.png" type="image/png" sizes="192x192">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body data-theme="night">
+<div id="app">
+  <header id="top">
+    <div class="counter">
+      <div class="counter-label" id="zoneName">Скалистый берег</div>
+      <div class="counter-main"><span class="bulb">💡</span><span id="light">0</span></div>
+      <div class="counter-sub"><span id="rate">0</span> света/с<span id="buffTag" class="bufftag" hidden></span></div>
+    </div>
+    <div class="pills">
+      <div class="pill" id="pearlPill" title="Жемчужины" hidden>🦪 <b id="pearlsN">0</b></div>
+      <div class="pill" id="starPill" title="Звёзды" hidden>⭐ <b id="starsN">0</b></div>
+    </div>
+  </header>
+
+  <section id="scene">
+    <canvas id="cv"></canvas>
+    <div id="floaters"></div>
+    <button id="tapBtn" aria-label="Зажечь свет — коснись фонаря"></button>
+    <button id="starBtn" hidden aria-label="Падающая звезда">⭐</button>
+    <div id="buffs"></div>
+    <div id="zoneProg"><div id="zoneProgBar"></div><span id="zoneProgText"></span></div>
+  </section>
+
+  <main id="content">
+    <section class="tab" id="tab-gens">
+      <div class="bulkbar" id="bulkbar">
+        <span>Покупка:</span>
+        <button data-bulk="1">×1</button><button data-bulk="10">×10</button><button data-bulk="100">×100</button><button data-bulk="max">Макс</button>
+      </div>
+      <div id="genList"></div>
+    </section>
+    <section class="tab" id="tab-upg" hidden>
+      <div class="chips" id="upgFilter"></div>
+      <div id="upgList"></div>
+    </section>
+    <section class="tab" id="tab-pres" hidden></section>
+    <section class="tab" id="tab-rew" hidden></section>
+    <section class="tab" id="tab-more" hidden></section>
+  </main>
+
+  <nav id="nav">
+    <button data-tab="gens" class="on"><i>🕯️</i><span>Огни</span></button>
+    <button data-tab="upg"><i>🛠️</i><span>Улучш.</span><em class="badge" id="badge-upg" hidden></em></button>
+    <button data-tab="pres"><i>🌊</i><span>Отлив</span><em class="badge" id="badge-pres" hidden>!</em></button>
+    <button data-tab="rew"><i>🏆</i><span>Награды</span><em class="badge" id="badge-rew" hidden>!</em></button>
+    <button data-tab="more"><i>⚙️</i><span>Ещё</span></button>
+  </nav>
+</div>
+
+<div id="toasts"></div>
+<div id="modalRoot"></div>
+<noscript><p style="padding:2em;color:#fff">Для игры нужен JavaScript.</p></noscript>
+
+<script src="js/util.js"></script>
+<script src="js/data.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/save.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/scene.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

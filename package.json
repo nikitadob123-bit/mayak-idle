@@ -1,0 +1,13 @@
+{
+  "name": "mayak-idle",
+  "version": "1.0.0",
+  "description": "Хозяин маяка — инкрементальная idle-игра (PWA, без бэкенда и сборки)",
+  "private": true,
+  "scripts": {
+    "test": "node test/run.js",
+    "sim": "node tools/sim.js",
+    "icons": "node tools/make-icons.js",
+    "e2e": "node tools/e2e.js"
+  },
+  "devDependencies": { "playwright-core": "^1.50.0" }
+}
